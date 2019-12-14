@@ -13,7 +13,8 @@
 
 %% Application callbacks
 -export([start/2 ,
-         stop/1]).
+         stop/1,
+         daemon/3]).
 
 %%%===================================================================
 %%% Application callbacks
@@ -42,10 +43,33 @@ start(_StartType , _StartArgs) ->
             % only elements with the "_emu" suffix for each slot.
             % Once the LEDs have turned red,
             % the supervisor has been initialized.
+            io:format("Starting ~n"),
             {ok, _} = application:ensure_all_started(grisp),
             LEDs = [1, 2],
-            io:format("TEST OUTPUT ~n"),
+            Name = erlang:node(),
+            Id = lists:nth(2,string:split(lists:nth(1,string:split(atom_to_list(Name),"@")), "s")),
+            io:format("Init ~n"),
+            Type = state_gset,
+            Set = {<<"mean">>, Type},
+            {ok, {GMean, _, _, _}} = lasp:declare(Set, Type),
+
+            Type1 = state_gset,
+            Set1 = {<<"T1">>, Type1},
+            lasp:declare(Set1, Type1),        
+
+            Type2 = state_gset,
+            Set2 = {<<"T2">>, Type2},
+            lasp:declare(Set2, Type2),        
+
+            Type3 = state_gset,
+            Set3 = {<<"T3">>, Type3},
+            lasp:declare(Set3, Type3),        
+
+
+            io:format("Go in Loop ~n"),
             [grisp_led:color(L, red) || L <- LEDs],
+
+            daemon(Id, GMean, 0),
             {ok , Pid};
         Error ->
             {error, Error}
@@ -67,3 +91,16 @@ stop(_State) ->
 %%%===================================================================
 %%% Internal functions
 %%%===================================================================
+
+daemon(Id, GMean, Count) -> 
+    io:format("I AM THE DAEMON ~n"),
+    Count2 = Count + 1,
+    Count2str = integer_to_list(Count2),
+    {ok, {GMean1, _, _, _}} = lasp:update(GMean, {add, Count2str}, self()),
+    {ok, GRes} = lasp:query(GMean1),
+    %io:format(sets:to_list(GRes)),
+    io:format(GRes),
+    io:format("~n"),
+    timer:sleep(500),
+    daemon(Id, GMean1, Count2).
+    
