@@ -7,7 +7,7 @@
 %%% Created : 06. Nov 2018 20:16
 %%%-------------------------------------------------------------------
 -module(achlys_app).
--author("Igor Kopestenski <igor.kopestenski@uclouvain.be>").
+-author("Igor Kopestenski <igor.kopestenski@uclouvain.be>, Elias Oumouadene <elias.oumouadene@student.uclouvain.be>, Gregory Crepeulandt <gregory.creupelandt@student.uclouvain.be>").
 
 -behaviour(application).
 
@@ -44,6 +44,7 @@ start(_StartType , _StartArgs) ->
             % the supervisor has been initialized.
             {ok, _} = application:ensure_all_started(grisp),
             LEDs = [1, 2],
+            io:format("TEST OUTPUT ~n"),
             [grisp_led:color(L, red) || L <- LEDs],
             {ok , Pid};
         Error ->
