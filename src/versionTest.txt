@@ -49,13 +49,12 @@ start(_StartType , _StartArgs) ->
             Name = erlang:node(),
             Id = lists:nth(2,string:split(lists:nth(1,string:split(atom_to_list(Name),"@")), "s")),
             io:format("Init ~n"),
-	    PairLeftType = state_lwwregister.
-	    PairRightType = state_gcounter.
-
+	        PairLeftType = state_lwwregister,
+	        PairRightType = state_gcounter,
 
             Type1 = {state_pair, [PairLeftType, PairRightType]},
             Set1 = {<<"T1">>, Type1},
-            {ok, {T1Pair, _, _, _}}lasp:declare(Set1, Type1),        
+            {ok, {T1Pair, _, _, _}} = lasp:declare(Set1, Type1),
 
             Type2 = {state_pair, [PairLeftType, PairRightType]},
             Set2 = {<<"T2">>, Type2},
