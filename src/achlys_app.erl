@@ -15,6 +15,8 @@
 -export([start/2 ,
          stop/1,
          daemon/4,
+         declare_loop/3,
+         mean_compute/4,
          timestamp/0]).
 
 %%%===================================================================
@@ -48,25 +50,15 @@ start(_StartType , _StartArgs) ->
             {ok, _} = application:ensure_all_started(grisp),
             LEDs = [1, 2],
             Name = erlang:node(),
+            Number = 2,
             Id = lists:nth(2,string:split(lists:nth(1,string:split(atom_to_list(Name),"@")), "s")),
+            
             io:format("Init ~n"),
-            Type = state_gset,
-            Set = {<<"mean">>, Type},
-            {ok, {GMean, _, _, _}} = lasp:declare(Set, Type),
+            Buffer = declare_loop([], Number, 1),
 
-            LeftType = state_lwwregister,
-	        %RightType = state_gcounter,
-            RightType = state_lwwregister,
-
-            Type1 = {state_pair, [LeftType, RightType]},
-            Set1 = {<<"T1">>, Type1},
-            {ok, {T1, _, _, _}} = lasp:declare(Set1, Type1),
-
-
-            io:format("Go in Loop ~n"),
             [grisp_led:color(L, red) || L <- LEDs],
             io:format("Launching the daemon ~n"),
-            daemon(500, Id, T1, 0),
+            daemon(10000, Id, Buffer, Number),
             {ok , Pid};
         Error ->
             {error, Error}
@@ -89,26 +81,49 @@ stop(_State) ->
 %%% Internal functions
 %%%===================================================================
 
-daemon(Sleep, Id, T1, Count) -> 
-    Count2 = Count + 1,
-    %Count2str = integer_to_list(Count2),
-
+daemon(Sleep, Id, Buffer, Number) -> 
+    io:format("DAAAAEEEMON ~n"),
+    
     Temperature = rand:uniform(20)+12, %Mesure de la temperature
     TemperatureStr = integer_to_list(Temperature),
-
-    {ok, {T11, _, _, _}} = lasp:update(T1, {fst, {set, timestamp(), TemperatureStr}}, self()),
-    {ok, {T12, _, _, _}} = lasp:update(T11, {snd, {set, timestamp(), timestamp()}}, self()),
-    {ok, T1Res} = lasp:query(T12),    
-    io:format("~p ~n", [T1Res]),    
-    timer:sleep(Sleep),
-
+    Node = lists:nth(list_to_integer(Id),Buffer),
+    %io:format("La valeur  ~p ~n", [Value]),
+    {ok, {TT, _, _, _}} = lasp:update(Node, {fst, {set, timestamp(), TemperatureStr}}, self()),
+    {ok, {T, _, _, _}} = lasp:update(TT, {snd, {set, timestamp(), timestamp()}}, self()),
+    {ok, TRes} = lasp:query(T),    
+    %io:format("Is : ~p ~n", [TRes]), 
     
+    timer:sleep(Sleep),
+    Mean = mean_compute(Buffer, Number, 0, 1),
+    io:format("computed"),
 
     timer:sleep(Sleep),
-    daemon(Sleep, Id, T1, Count2).
+    daemon(Sleep, Id, Buffer, Number).
 
 
 timestamp() ->
     {MegaSecs, Secs, MicroSecs} = os:timestamp(),
     (MegaSecs*1000000000 + Secs*1000 + round(MicroSecs/1000)).
-    
+
+
+declare_loop(L, Number, Counter) when Number == 0 ->
+    io:format("Ended with ~p ~n", [L]),
+    L;
+declare_loop(L, Number, Counter) when Number > 0 ->
+    Type = {state_pair, [state_lwwregister, state_lwwregister]},
+    Name = "T"++integer_to_list(Counter),
+    Set = {Name, Type},
+    {ok, {T, _, _, _}} = lasp:declare(Set, Type),
+    declare_loop(erlang:append(L,[T]), Number-1, Counter+1).
+
+
+mean_compute(Buffer, Number, Mean, Counter) when Counter > Number ->
+    io:format("The Buffer is : ~p ~n", [Buffer]),
+    io:format("The mean is : ~p ~n", [Mean]),
+    Mean;
+mean_compute(Buffer, Number, Mean, Counter) when Counter =< Number ->
+    Node = lists:nth(Counter,Buffer),
+    {ok, Tuple} = lasp:query(Node),
+    Value = erlang:element(1,Tuple),
+    NewMean = Mean+(list_to_integer(Value)/Number),
+    mean_compute(Buffer, Number, NewMean, Counter+1).
