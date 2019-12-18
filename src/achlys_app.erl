@@ -37,7 +37,7 @@ start(_StartType , _StartArgs) ->
             io:format("Starting ~n"),
             {ok, _} = application:ensure_all_started(grisp),
             Name = erlang:node(),
-            NumberOfNodes = 20, %This is the maximum number of GRISP boards
+            NumberOfNodes = 10, %This is the maximum number of GRISP boards
 				% (or emulations) you can launch (limited to avoid declaring too many useless variables)
 				%If you want to use this application in a bigger context, you can put a higher value
 
@@ -136,7 +136,7 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
         Return
     end;
 mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, CounterValid, Chef) when Counter =< NumberOfNodes ->
-    % Gradually add all the temperatures from the other valid nodes.
+    % Gradually add all the temperatures from the other valid nodes (that has pushed a temperature recently).
     % If a node has not been initialized yet, it will not be taken in consideration
     % If no chef has been elected, a valid node that has recently pushed a temperature is elected (based on smaller Id).
     Node = lists:nth(Counter,Buffer),
@@ -144,17 +144,18 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
 
     case erlang:element(1,Tuple) of 
 	undefined -> 
-        io:format("    ERROR: I got an undefined temperature from the query ~p ~n", [erlang:element(1,Node)]),
+        io:format("    Warning: I got an undefined temperature from the query ~p probably not initialized ~n", [erlang:element(1,Node)]),
         NewCounterValid = CounterValid,
         NewChef = Chef, % chef does not change (this node will not be elected)
         NewMean = Mean; % mean does not change (this node is not taken in consideration for the mean)
 	Value ->
         Time_diff = timestamp() - erlang:element(2,Tuple), % We take the elasped time since last update from this node
-        if Time_diff < (Sleep*3) ->       
+        if Time_diff < (Sleep*3) -> % The queried node has recently pushed a temperature, it will be taken in consideration
+				    % for mean computation and potentially for leader election      
             
             if Chef == 0 -> % If no chef yet and this node was recently active, it becomes the chef (leader)
                 NewChef = list_to_integer(lists:nth(2,string:split(erlang:element(1,Node),"T"))),
-                io:format("    We found the chef :  ~p ~n", [NewChef]);
+                io:format("    We found the leader :  ~p ~n", [NewChef]);
             true ->
                 NewChef = Chef
             end,
@@ -164,7 +165,7 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
             io:format("~p ~n", [erlang:element(1,Node)]),
             NewMean = Mean+(list_to_integer(RemoteTemperature)); %Add temperatures from nodes
         true ->
-            io:format("    ERROR: I got a too old temperature from the query ~p ~n", [erlang:element(1,Node)]),
+            io:format("    Warning: I got a too old temperature from the query ~p ~n", [erlang:element(1,Node)]),
             NewCounterValid = CounterValid,
             NewChef = Chef, % chef does not change (this node will not be elected)
             NewMean = Mean % mean does not change (this node is not taken in consideration for the mean)
