@@ -13,7 +13,8 @@
          daemon/5,
          declare_loop/3,
          mean_compute/9,
-         timestamp/0]).
+         timestamp/0,
+         get_GlobalMean/0]).
 
 %%%===================================================================
 %%% Application callbacks
@@ -49,7 +50,6 @@ start(_StartType , _StartArgs) ->
             GMSet = {GMName, GMType},
             {ok, {GlobalMean, _, _, _}} = lasp:declare(GMSet, GMType), %GlobalMean that will only be updated by the CHEF node
             Buffer = declare_loop([], NumberOfNodes, 1),
-
             io:format("Launching the daemon ~n"),
             daemon(5000, Id, Buffer, NumberOfNodes, GlobalMean),
             {ok , Pid};
@@ -74,6 +74,7 @@ stop(_State) ->
 %%% Internal functions
 %%%===================================================================
 
+
 daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean) -> 
 %% This daemon will run during the entire lifetime of the node, measuring temperature
 %% and computing averages on a regular time basis.
@@ -88,13 +89,14 @@ daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean) ->
     lasp:update(TT, {snd, {set, timestamp(), timestamp()}}, self()),
     io:format("  Local Temperature: ~p ~n", [Temperature]), 
 
-    FirstSleep = round(Sleep/3),
+    FirstSleep =  round(Sleep/3),
     timer:sleep(FirstSleep), 
     % After a small sleep, computes the temperature mean based on all the valid nodes
     Mean = mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, 0, 1, 0, 0),
     io:format("  Average temperature I computed : ~p ~n", [Mean]),
 
-    timer:sleep(Sleep), % After a longer sleep, the daemon is looping
+    SecondSleep = 2 * round(Sleep/3),
+    timer:sleep(SecondSleep), % After a longer sleep, the daemon is looping
     daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean).
 
 
@@ -144,7 +146,7 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
 
     case erlang:element(1,Tuple) of 
 	undefined -> 
-        io:format("    Warning: I got an undefined temperature from the query ~p probably not initialized ~n", [erlang:element(1,Node)]),
+        %io:format("    Warning: I got an undefined temperature from the query ~p probably not initialized ~n", [erlang:element(1,Node)]),
         NewCounterValid = CounterValid,
         NewChef = Chef, % chef does not change (this node will not be elected)
         NewMean = Mean; % mean does not change (this node is not taken in consideration for the mean)
@@ -172,3 +174,11 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
         end
     end,
     mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, NewMean, Counter+1, NewCounterValid, NewChef).
+
+
+get_GlobalMean() ->
+    GMType = {state_pair, [state_lwwregister, state_lwwregister]},
+    GMName = "GlobalMean",
+    GMSet = {GMName, GMType},
+    {ok, Tuple} = lasp:query(GMSet),
+    erlang:element(1,Tuple).
