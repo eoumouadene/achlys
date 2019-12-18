@@ -12,4 +12,4 @@ Here you are, to create a bigger cluster of nodes, you can repeat the same proce
 
 We made the outputs inside these shells as clear as possible to make it easy to understand the actual state of the application. 
 
-Many more informations are available in our report "report_group_c.pdf" directly inside this folder.
+Many more informations are available in our report "report.pdf" directly inside this folder.
