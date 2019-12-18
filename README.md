@@ -1,4 +1,4 @@
-# Group C project:
+# Group C project : A Distributed Heating Trigger System
 
 # How to launch our application : 
 
