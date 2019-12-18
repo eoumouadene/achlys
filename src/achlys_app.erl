@@ -141,6 +141,7 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
     % If no chef has been elected, a valid node that has recently pushed a temperature is elected (based on smaller Id).
     Node = lists:nth(Counter,Buffer),
     {ok, Tuple} = lasp:query(Node),
+
     case erlang:element(1,Tuple) of 
 	undefined -> 
         io:format("    ERROR: I got an undefined temperature from the query ~p ~n", [erlang:element(1,Node)]),
@@ -149,16 +150,24 @@ mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, Counte
         NewMean = Mean; % mean does not change (this node is not taken in consideration for the mean)
 	Value ->
         Time_diff = timestamp() - erlang:element(2,Tuple), % We take the elasped time since last update from this node
-        if (Chef == 0) and (Time_diff < (Sleep*3)) -> % If no chef yet and this node was recently active, it becomes the chef (leader)
-            NewChef = list_to_integer(lists:nth(2,string:split(erlang:element(1,Node),"T"))),
-            io:format("    We found the chef :  ~p ~n", [NewChef]);
+        if Time_diff < (Sleep*3) ->       
+            
+            if Chef == 0 -> % If no chef yet and this node was recently active, it becomes the chef (leader)
+                NewChef = list_to_integer(lists:nth(2,string:split(erlang:element(1,Node),"T"))),
+                io:format("    We found the chef :  ~p ~n", [NewChef]);
+            true ->
+                NewChef = Chef
+            end,
+            RemoteTemperature = Value,
+            NewCounterValid = CounterValid + 1, %This node was initialized and had a temperature
+            io:format("    I got the temperature ~p from the query ", [RemoteTemperature]),
+            io:format("~p ~n", [erlang:element(1,Node)]),
+            NewMean = Mean+(list_to_integer(RemoteTemperature)); %Add temperatures from nodes
         true ->
-            NewChef = Chef
-        end,
-        RemoteTemperature = Value,
-        NewCounterValid = CounterValid + 1, %This node was initialized and had a temperature
-		io:format("    I got the temperature ~p from the query ", [RemoteTemperature]),
-        io:format("~p ~n", [erlang:element(1,Node)]),
-		NewMean = Mean+(list_to_integer(RemoteTemperature)) %Add temperatures from nodes
+            io:format("    ERROR: I got a too old temperature from the query ~p ~n", [erlang:element(1,Node)]),
+            NewCounterValid = CounterValid,
+            NewChef = Chef, % chef does not change (this node will not be elected)
+            NewMean = Mean % mean does not change (this node is not taken in consideration for the mean)
+        end
     end,
     mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, NewMean, Counter+1, NewCounterValid, NewChef).
