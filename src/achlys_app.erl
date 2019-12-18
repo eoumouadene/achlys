@@ -48,17 +48,20 @@ start(_StartType , _StartArgs) ->
             % the supervisor has been initialized.
             io:format("Starting ~n"),
             {ok, _} = application:ensure_all_started(grisp),
-            LEDs = [1, 2],
+            %LEDs = [1, 2],
             Name = erlang:node(),
-            Number = 2,
+            NumberOfNodes = 1,
             Id = lists:nth(2,string:split(lists:nth(1,string:split(atom_to_list(Name),"@")), "s")),
             
             io:format("Init ~n"),
-            Buffer = declare_loop([], Number, 1),
+            Buffer = declare_loop([], NumberOfNodes, 1),
 
-            [grisp_led:color(L, red) || L <- LEDs],
+            %[grisp_led:color(L, red) || L <- LEDs],
+
+	    io:format("My Id is : ~p ~n", [Id]),
+	    io:format("Buffer of distributed variables is : ~p ~n", [Buffer]),
             io:format("Launching the daemon ~n"),
-            daemon(10000, Id, Buffer, Number),
+            daemon(10000, Id, Buffer, NumberOfNodes),
             {ok , Pid};
         Error ->
             {error, Error}
@@ -81,24 +84,26 @@ stop(_State) ->
 %%% Internal functions
 %%%===================================================================
 
-daemon(Sleep, Id, Buffer, Number) -> 
+daemon(Sleep, Id, Buffer, NumberOfNodes) -> 
     io:format("DAAAAEEEMON ~n"),
     
     Temperature = rand:uniform(20)+12, %Mesure de la temperature
     TemperatureStr = integer_to_list(Temperature),
-    Node = lists:nth(list_to_integer(Id),Buffer),
+    MyNode = lists:nth(list_to_integer(Id),Buffer),
     %io:format("La valeur  ~p ~n", [Value]),
-    {ok, {TT, _, _, _}} = lasp:update(Node, {fst, {set, timestamp(), TemperatureStr}}, self()),
+    {ok, {TT, _, _, _}} = lasp:update(MyNode, {fst, {set, timestamp(), TemperatureStr}}, self()),
     {ok, {T, _, _, _}} = lasp:update(TT, {snd, {set, timestamp(), timestamp()}}, self()),
     {ok, TRes} = lasp:query(T),    
-    %io:format("Is : ~p ~n", [TRes]), 
+    io:format("Temperature I measured : ~p ~n", [Temperature]),
+    io:format("Temperature I have put in lasp variable : ~p ~n", [TRes]), 
+
     
-    timer:sleep(Sleep),
-    Mean = mean_compute(Buffer, Number, 0, 1),
-    io:format("computed"),
+    timer:sleep(Sleep), 
+    Mean = mean_compute(Buffer, NumberOfNodes, 0, 1),
+    io:format("Average temperature I computed : ~p ~n", [Mean]),
 
     timer:sleep(Sleep),
-    daemon(Sleep, Id, Buffer, Number).
+    daemon(Sleep, Id, Buffer, NumberOfNodes).
 
 
 timestamp() ->
@@ -106,24 +111,33 @@ timestamp() ->
     (MegaSecs*1000000000 + Secs*1000 + round(MicroSecs/1000)).
 
 
-declare_loop(L, Number, Counter) when Number == 0 ->
+declare_loop(L, NumberOfNodesToDeclare, Counter) when NumberOfNodesToDeclare == 0 ->
     io:format("Ended with ~p ~n", [L]),
     L;
-declare_loop(L, Number, Counter) when Number > 0 ->
+declare_loop(L, NumberOfNodesToDeclare, Counter) when NumberOfNodesToDeclare > 0 ->
     Type = {state_pair, [state_lwwregister, state_lwwregister]},
     Name = "T"++integer_to_list(Counter),
     Set = {Name, Type},
     {ok, {T, _, _, _}} = lasp:declare(Set, Type),
-    declare_loop(erlang:append(L,[T]), Number-1, Counter+1).
+    declare_loop(erlang:append(L,[T]), NumberOfNodesToDeclare-1, Counter+1).
 
 
-mean_compute(Buffer, Number, Mean, Counter) when Counter > Number ->
+mean_compute(Buffer, NumberOfNodes, Mean, Counter) when Counter > NumberOfNodes ->
     io:format("The Buffer is : ~p ~n", [Buffer]),
     io:format("The mean is : ~p ~n", [Mean]),
     Mean;
-mean_compute(Buffer, Number, Mean, Counter) when Counter =< Number ->
+mean_compute(Buffer, NumberOfNodes, Mean, Counter) when Counter =< NumberOfNodes ->
     Node = lists:nth(Counter,Buffer),
+    io:format("Lasp variable I want to query : ~p ~n", [Node]),
     {ok, Tuple} = lasp:query(Node),
-    Value = erlang:element(1,Tuple),
-    NewMean = Mean+(list_to_integer(Value)/Number),
-    mean_compute(Buffer, Number, NewMean, Counter+1).
+    case Tuple of 
+	undefined -> io:format("Bug: I got an undefined temperature from the query ~n"),
+		     NewMean = 0;
+	Value ->  RemoteTemperature = erlang:element(1,Tuple),
+		 io:format("I got the temperature ~p from the query ~n", [RemoteTemperature]),
+		 NewMean = Mean+(list_to_integer(RemoteTemperature)/NumberOfNodes) end
+
+    %Value = erlang:element(1,Tuple),
+    %io:format("Temperature I got from this query : ~p ~n", [Value]),
+    %NewMean = Mean+(list_to_integer(Value)/NumberOfNodes),
+    mean_compute(Buffer, NumberOfNodes, NewMean, Counter+1).

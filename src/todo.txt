@@ -1,0 +1,15 @@
+Measure temperature every 30 min then decale the average computation for 3 minutes.
+
+deamon=
+measure temperature
+wait 10 min
+compute average
+wait 20 min
+call deamon
+
+Ca ferait que la temperature serait mise à jour tous les 30 min et la moyenne serait calculée toutes les 30 min (mais décallée de 3 min). Mieux que une fois par heure.
+
+
+
+
+
