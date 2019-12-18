@@ -50,8 +50,9 @@ start(_StartType , _StartArgs) ->
             {ok, _} = application:ensure_all_started(grisp),
             %LEDs = [1, 2],
             Name = erlang:node(),
-            NumberOfNodes = 2,
+            NumberOfNodes = 20,
             Id = lists:nth(2,string:split(lists:nth(1,string:split(atom_to_list(Name),"@")), "s")),
+            io:format("My Id is : ~p ~n", [Id]),            
             
             io:format("Init ~n"),
             GMType = {state_pair, [state_lwwregister, state_lwwregister]},
@@ -62,8 +63,6 @@ start(_StartType , _StartArgs) ->
 
             %[grisp_led:color(L, red) || L <- LEDs],
 
-	    io:format("My Id is : ~p ~n", [Id]),
-	    io:format("Buffer of distributed variables is : ~p ~n", [Buffer]),
             io:format("Launching the daemon ~n"),
             daemon(5000, Id, Buffer, NumberOfNodes, GlobalMean),
             {ok , Pid};
@@ -89,7 +88,7 @@ stop(_State) ->
 %%%===================================================================
 
 daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean) -> 
-    io:format("__New round__~n"),
+    io:format("~n__New round__~n"),
     
     Temperature = rand:uniform(7)+15, %Mesure de la temperature
     TemperatureStr = integer_to_list(Temperature),
@@ -97,12 +96,12 @@ daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean) ->
     %io:format("La valeur  ~p ~n", [Value]),
     {ok, {TT, _, _, _}} = lasp:update(MyNode, {fst, {set, timestamp(), TemperatureStr}}, self()),
     lasp:update(TT, {snd, {set, timestamp(), timestamp()}}, self()),
-    io:format("Temperature I measured : ~p ~n", [Temperature]),
+    io:format("  Local Temperature: ~p ~n", [Temperature]),
 
     FirstSleep = round(Sleep/3),
     timer:sleep(FirstSleep), 
     Mean = mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, 0, 1, 0, 0),
-    io:format("---Average temperature I computed : ~p ---~n", [Mean]),
+    io:format("  Average temperature I computed : ~p ~n", [Mean]),
 
     timer:sleep(Sleep),
     daemon(Sleep, Id, Buffer, NumberOfNodes, GlobalMean).
@@ -114,7 +113,6 @@ timestamp() ->
 
 
 declare_loop(L, NumberOfNodesToDeclare, Counter) when NumberOfNodesToDeclare == 0 ->
-    io:format("Ended with ~p ~n", [L]),
     L;
 declare_loop(L, NumberOfNodesToDeclare, Counter) when NumberOfNodesToDeclare > 0 ->
     Type = {state_pair, [state_lwwregister, state_lwwregister]},
@@ -125,42 +123,40 @@ declare_loop(L, NumberOfNodesToDeclare, Counter) when NumberOfNodesToDeclare > 0
 
 
 mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, CounterValid, Chef) when Counter > NumberOfNodes ->
-    io:format("The Number of Valid node is : ~p ~n", [CounterValid]),
+    io:format("*** The Number of Valid node is : ~p~n", [CounterValid]),
     Return = round(Mean/CounterValid),
     ReturnStr = integer_to_list(Return),
-    if (Chef == Id) or (Chef == 0) ->
-    io:format("I AM THE CHEF"),
+    IdInt = list_to_integer(Id),
+    if (Chef == IdInt ) or (Chef == 0) ->
+    io:format("*** I AM THE CHEF ~n"),
     {ok, {Global, _, _, _}} = lasp:update(GlobalMean, {fst, {set, timestamp(), ReturnStr}}, self()),
     lasp:update(Global, {snd, {set, timestamp(), timestamp()}}, self()),
+    io:format("*** My mean as a chef is : ~p ~n", [Return]),
     Return;
     true ->
         Return
     end;
 mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, Mean, Counter, CounterValid, Chef) when Counter =< NumberOfNodes ->
     Node = lists:nth(Counter,Buffer),
-    io:format("Lasp variable I want to query : ~p ~n", [erlang:element(1,Node)]),
     {ok, Tuple} = lasp:query(Node),
     case erlang:element(1,Tuple) of 
 	undefined -> 
-        io:format("--- ERROR: I got an undefined temperature from the query ~n"),
+        io:format("    ERROR: I got an undefined temperature from the query ~p ~n", [erlang:element(1,Node)]),
         NewCounterValid = CounterValid,
         NewChef = Chef,
         NewMean = Mean;
 	Value ->
         Time_diff = timestamp() - erlang:element(2,Tuple),
-        io:format("UnixTime : ~p ~n", [Time_diff]),
         if (Chef == 0) and (Time_diff < (Sleep*3)) ->
             NewChef = list_to_integer(lists:nth(2,string:split(erlang:element(1,Node),"T"))),
-            io:format("We found the chef :  ~p ~n ", [NewChef]);
+            io:format("    We found the chef :  ~p ~n", [NewChef]);
         true ->
             NewChef = Chef
         end,
         RemoteTemperature = Value,
         NewCounterValid = CounterValid + 1,
-		io:format("I got the temperature ~p from the query ~n", [RemoteTemperature]),
+		io:format("    I got the temperature ~p from the query ", [RemoteTemperature]),
+        io:format("~p ~n", [erlang:element(1,Node)]),
 		NewMean = Mean+(list_to_integer(RemoteTemperature)) 
     end,
-    %Value = erlang:element(1,Tuple),
-    %io:format("Temperature I got from this query : ~p ~n", [Value]),
-    %NewMean = Mean+(list_to_integer(Value)/NumberOfNodes),
     mean_compute(Sleep, Id, GlobalMean, Buffer, NumberOfNodes, NewMean, Counter+1, NewCounterValid, NewChef).
